@@ -168,7 +168,6 @@ class InventorySystem:
             
         item = self.tree.item(selected[0])['values']
         # מילוי הטופס בערכים הקיימים
-        print("here", item)
         # for entry, value in zip(self.entries, item):
         #     entry.delete(0, tk.END)
         #     entry.insert(0, str(value))
@@ -185,25 +184,29 @@ class InventorySystem:
         self.tree.delete(selected)
     def total_items_in_categories(self):
         total = 0
-        for items in self.category_data.items():
-            total += len(items) 
+        for category, items in self.category_data.items():
+            total += len(items)  # Count the number of *lists* in each category
+            print(f"Total items in category '{category}': {len(items)}")  # Print individual category counts
+
         return total
 
     def add_product(self):
         values = [e.get() for e in self.entries]
         if not values[1].strip():  # Assuming 'מספר' is at index 1
             messagebox.showwarning("שגיאה", "נא למלא את שדה מספר")
+            if any(not v.strip() for v in values):
+                messagebox.showwarning("שגיאה", "נא למלא את כל השדות")
             return
             
+        # הוספת ברקוד לערכים
         barcode_value = self.generate_barcode(values)
         values.append(barcode_value)
         
-        for data in self.category_data.items():
-            length = len(data)
-        values[0] = self.total_items_in_categories()
+        values[0] = self.total_items_in_categories() + 1
         self.tree.insert('', tk.END, values=values)
         self.category_data[self.current_category.get()].append(values[1:])
         
+        # ניקוי שדות
         for entry in self.entries[1:]:
             entry.delete(0, tk.END)
             
@@ -215,17 +218,18 @@ class InventorySystem:
         if not selected:
             messagebox.showwarning("שגיאה", "נא לבחור מוצר למחיקה")
             return
-            
+        
         item = self.tree.item(selected[0])['values']
-        self.archived_items.append(item)
+        self.archived_items.append(item[1:])
         self.save_archive()
         
         # הסרה מהקטגוריה הנוכחית
         self.category_data[self.current_category.get()] = [
             x for x in self.category_data[self.current_category.get()]
-            if x != item
+            if x != item[1:]
         ]
         
+        print("here", item, selected)
         self.tree.delete(selected)
         self.update_total()
         self.save_data()
@@ -235,7 +239,10 @@ class InventorySystem:
         archive_window.title("ארכיון מוצרים")
         archive_window.geometry("1000x500")
         
-        columns = self.tree["columns"]
+        columns = ["מספר", "מספר סידורי", "מותג", "דגם", "מסך", "מעבד", "זיכרון", 
+                 "דיסק", "כרטיס מסך", "רזולוציה", "מגע", "מערכת הפעלה", "סטטוס", "מחיר"]
+        
+        # columns = self.tree["columns"]
         archive_tree = ttk.Treeview(archive_window, columns=columns, show='headings')
         
         for col in columns:
@@ -244,6 +251,8 @@ class InventorySystem:
         
         for item in self.archived_items:
             archive_tree.insert('', tk.END, values=item)
+        
+        print("archive", self.archived_items)
         
         # הוספת כפתור שחזור
         def restore_item():
@@ -277,17 +286,17 @@ class InventorySystem:
         # ניקוי הטבלה
         for item in self.tree.get_children():
             self.tree.delete(item)
-        
-        # טעינת פריטים מהקטגוריה החדשה
-        for idx, item in enumerate(self.category_data[category], start=1):
-            if item not in self.archived_items:
+        idx = 1
+        for item in self.category_data[category]:
+            is_archived = False
+            for archived_item in self.archived_items:
+                if item[:14] == archived_item[:14]:
+                    is_archived = True
+                    break
+            if not is_archived:
                 self.tree.insert('', tk.END, values=(idx,) + tuple(item))
-        
-        # for item in self.category_data[category]:
-        #     if item not in self.archived_items:
-        #         self.tree.insert('', tk.END, values=item)
+                idx += 1
             
-        
         self.update_total()
 
     def save_data(self):
@@ -316,6 +325,7 @@ class InventorySystem:
         with open('archive.csv', 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerows(self.archived_items)
+            print("delete", self.archived_items)
 
     def load_archive(self):
         try:
@@ -397,7 +407,7 @@ class InventorySystem:
             os.startfile(barcode_file.name, 'print')
             
         except Exception as e:
-            messagebox.showerror("שגיאה", f"שגיאה בהדפסת מדבקה here: {str(e)}")
+            messagebox.showerror("שגיאה", f"שגיאה בהדפסת מדבקה: {str(e)}")
 
 if __name__ == "__main__":
     try:
