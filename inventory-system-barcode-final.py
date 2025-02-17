@@ -1,10 +1,14 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import csv
-import os
-import tempfile
 import barcode # type: ignore
 from barcode.writer import ImageWriter # type: ignore
+from reportlab.pdfgen import canvas
+from tkinter import filedialog
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+
 
 class InventorySystem:
     def __init__(self, root):
@@ -22,6 +26,9 @@ class InventorySystem:
         self.create_widgets()
         self.load_archive()
         self.load_data()
+        
+        # print("archive", self.archived_items)
+        # print("current", self.category_data)
         
     def create_widgets(self):
         # חיפוש
@@ -45,7 +52,7 @@ class InventorySystem:
         self.total_label.pack(side=tk.LEFT, padx=20)
         
         # יצירת טבלה
-        columns = ("ספק", "מספר", "מספר סידורי", "מותג", "דגם", "מסך", "מעבד", "זיכרון", 
+        columns = ("מספר", "ספק", "מספר סידורי", "מותג", "דגם", "מסך", "מעבד", "זיכרון", 
                   "דיסק", "כרטיס מסך", "רזולוציה", "מגע", "מערכת הפעלה", "סטטוס", "מחיר", "ברקוד")
         
         table_frame = tk.Frame(self.root)
@@ -79,7 +86,7 @@ class InventorySystem:
         input_frame.pack(pady=5)
         
         self.entries = []
-        fields = ["ספק", "מספר", "מספר סידורי", "מותג", "דגם", "מסך", "מעבד", "זיכרון", 
+        fields = ["מספר", "ספק", "מספר סידורי", "מותג", "דגם", "מסך", "מעבד", "זיכרון", 
                  "דיסק", "כרטיס מסך", "רזולוציה", "מגע", "מערכת הפעלה", "סטטוס", "מחיר"]
         
         row1 = tk.Frame(input_frame)
@@ -94,10 +101,9 @@ class InventorySystem:
             
             tk.Label(frame, text=field).pack()
             entry = tk.Entry(frame, width=12)
-            if field == "ספק":
+            if field == "מספר":
                 entry.config(state='readonly', background='#f0f0f0')
                 entry.insert(0, str(self.product_counter))  # Auto-populate initial value
-        
             entry.pack()
             self.entries.append(entry)
         
@@ -218,8 +224,9 @@ class InventorySystem:
         if not selected:
             messagebox.showwarning("שגיאה", "נא לבחור מוצר למחיקה")
             return
-        
         item = self.tree.item(selected[0])['values']
+        barcode_value = self.generate_barcode(item)
+        item[15] = barcode_value
         self.archived_items.append(item[1:])
         self.save_archive()
         
@@ -229,7 +236,6 @@ class InventorySystem:
             if x != item[1:]
         ]
         
-        print("here", item, selected)
         self.tree.delete(selected)
         self.update_total()
         self.save_data()
@@ -240,7 +246,7 @@ class InventorySystem:
         archive_window.geometry("1000x500")
         
         columns = ["מספר", "מספר סידורי", "מותג", "דגם", "מסך", "מעבד", "זיכרון", 
-                 "דיסק", "כרטיס מסך", "רזולוציה", "מגע", "מערכת הפעלה", "סטטוס", "מחיר"]
+                 "דיסק", "כרטיס מסך", "רזולוציה", "מגע", "מערכת הפעלה", "סטטוס", "מחיר", "ברקוד"]
         
         # columns = self.tree["columns"]
         archive_tree = ttk.Treeview(archive_window, columns=columns, show='headings')
@@ -262,7 +268,12 @@ class InventorySystem:
                 return
                 
             item = archive_tree.item(selected[0])['values']
-            self.tree.insert('', tk.END, values=item)
+            idx = self.total_items_in_categories()
+            # barcode_value = self.generate_barcode(item)
+            print("restore", item)
+            # item[14] = barcode_value
+            self.tree.insert('', tk.END, values = (idx,) + tuple(item))
+            
             self.category_data[self.current_category.get()].append(item)
             
             # הסרה מהארכיון
@@ -274,7 +285,7 @@ class InventorySystem:
             archive_tree.delete(selected)
             
             self.save_archive()
-            self.save_data()
+            # self.save_data()
             self.update_total()
             
         tk.Button(archive_window, text="שחזר למלאי", command=restore_item).pack(pady=5)
@@ -325,7 +336,7 @@ class InventorySystem:
         with open('archive.csv', 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerows(self.archived_items)
-            print("delete", self.archived_items)
+            print("delete===", self.archived_items)
 
     def load_archive(self):
         try:
@@ -360,25 +371,105 @@ class InventorySystem:
                 continue
         self.total_label.config(text=f'סה"כ: {total:,.2f} ₪')
 
+    # def print_label(self):
+    #     selected = self.tree.selection()
+    #     if not selected:
+    #         messagebox.showwarning("שגיאה", "נא לבחור מוצר להדפסת מדבקה")
+    #         return
+            
+    #     item = self.tree.item(selected[0])['values']
+        
+    #     # יצירת ברקוד
+    #     barcode_data = item[15] if len(item) > 15 else self.generate_barcode(item)
+    #     try:
+    #         EAN = barcode.get_barcode_class('ean13')
+    #         ean = EAN(str(barcode_data), writer=ImageWriter())
+            
+    #         # שמירת הברקוד כקובץ זמני
+    #         barcode_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+    #         ean.write(barcode_file.name)
+            
+    #         width, height = int(100 * 37.7952755906), int(60 * 37.7952755906)
+    #         image = Image.new('RGB', (width, height), 'white')
+    #         draw = ImageDraw.Draw(image)
+            
+    #         # הוספת טקסט לתמונה
+    #         font = ImageFont.load_default()
+            
+    #         label_text = f"""
+    #             מספר מוצר: {item[0]}
+    #             מספר סידורי: {item[1]}
+    #             מותג: {item[2]}
+    #             דגם: {item[3]}
+
+    #             מפרט טכני:
+    #             -----------------
+    #             מסך: {item[4]}
+    #             מעבד: {item[5]}
+    #             זיכרון: {item[6]}
+    #             דיסק: {item[7]}
+    #             כרטיס מסך: {item[8]}
+    #             רזולוציה: {item[9]}
+    #             מסך מגע: {item[10]}
+    #             מערכת הפעלה: {item[11]}
+    #             סטטוס: {item[12]}
+
+    #             ברקוד: {barcode_data}
+    #             """
+                
+    #         draw.text((10, 10), label_text, fill='black', font=font)
+        
+    #         # הוספת ברקוד לתמונה
+    #         barcode_img = Image.open(barcode_file.name)
+    #         image.paste(barcode_img, (10, height - barcode_img.height - 10))
+            
+    #         # שמירת התמונה כקובץ זמני
+    #         label_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+    #         image.save(label_file.name)
+    #         # temp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt', encoding='utf-8')
+    #         # temp_file.write(label_text)
+    #         # temp_file.close()
+            
+    #         # הדפסת המדבקה והברקוד
+    #         # os.startfile(temp_file.name, 'print')
+    #         # os.startfile(barcode_file.name, 'print')
+    #         os.startfile(label_file.name, 'print')
+            
+    #     except Exception as e:
+    #         messagebox.showerror("שגיאה", f"שגיאה בהדפסת מדבקה: {str(e)}")
+
     def print_label(self):
         selected = self.tree.selection()
         if not selected:
             messagebox.showwarning("שגיאה", "נא לבחור מוצר להדפסת מדבקה")
             return
-            
         item = self.tree.item(selected[0])['values']
+        barcode_data = item[15] if len(item) > 15 else self.generate_barcode(item)
         
-        # יצירת ברקוד
-        barcode_data = item[14] if len(item) > 14 else self.generate_barcode(item)
-        try:
-            EAN = barcode.get_barcode_class('ean13')
-            ean = EAN(str(barcode_data), writer=ImageWriter())
-            
-            # שמירת הברקוד כקובץ זמני
-            barcode_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-            ean.write(barcode_file.name)
-            
-            label_text = f"""
+        
+        output_filename = filedialog.asksaveasfilename(defaultextension=".pdf",
+                                                    filetypes=[("PDF files", "*.pdf"),
+                                                               ("All files", "*.*")])
+        if output_filename:
+            # Generate barcode
+            barcode_filename = 'barcode'
+            code128 = barcode.get('code128', '123456789012', writer=ImageWriter())
+            code128.save(barcode_filename)
+
+            # Create PDF
+            c = canvas.Canvas(output_filename, pagesize=letter)
+            width, height = letter
+            try:
+                # EAN = barcode.get_barcode_class('ean13')
+                # ean = EAN(str(barcode_data), writer=ImageWriter())
+                
+                # # שמירת הברקוד כקובץ זמני
+                # barcode_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+                # ean.write(barcode_file.name)
+                pdfmetrics.registerFont(TTFont('HebrewFont', 'PCSB Hebrew Regular.ttf'))
+                c.setFont('HebrewFont', 12)
+                
+                text = f"""
                 מספר מוצר: {item[0]}
                 מספר סידורי: {item[1]}
                 מותג: {item[2]}
@@ -398,16 +489,28 @@ class InventorySystem:
 
                 ברקוד: {barcode_data}
                 """
-            temp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt', encoding='utf-8')
-            temp_file.write(label_text)
-            temp_file.close()
+                
+                barcode_filename = 'barcode'
+                code128 = barcode.get('code128', str(barcode_data), writer=ImageWriter())
+                code128.save(barcode_filename)
+                text_y = height - 50
+                for line in text.strip().split('\n'):
+                    c.drawString(100, text_y, line.strip())
+                    text_y -= 15
+                print(text)
+                c.drawImage(barcode_filename + '.png', 100, height - 450, width=200, height=100)
+                c.save()
+            except Exception as e:
+                messagebox.showerror("שגיאה", f"שגיאה בהדפסת מדבקה: {str(e)}")
+
+            print(f"PDF created: {output_filename}")
+        else:
+            print("Save operation canceled.")
             
-            # הדפסת המדבקה והברקוד
-            os.startfile(temp_file.name, 'print')
-            os.startfile(barcode_file.name, 'print')
+
             
-        except Exception as e:
-            messagebox.showerror("שגיאה", f"שגיאה בהדפסת מדבקה: {str(e)}")
+
+
 
 if __name__ == "__main__":
     try:
