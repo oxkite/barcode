@@ -94,9 +94,9 @@ class InventorySystem:
             
             tk.Label(frame, text=field).pack()
             entry = tk.Entry(frame, width=12)
-            # if field == "ספק":
-            #     entry.config(state='readonly', background='#f0f0f0')
-                # entry.insert(0, str(self.product_counter))  # Auto-populate initial value
+            if field == "ספק":
+                entry.config(state='readonly', background='#f0f0f0')
+                entry.insert(0, str(self.product_counter))  # Auto-populate initial value
         
             entry.pack()
             self.entries.append(entry)
@@ -179,27 +179,31 @@ class InventorySystem:
             entry.insert(0, str(value))
             
             # If the field is "ספק", set it back to read-only after inserting the value
-            if index == 0:  # Assuming "ספק" is the first field
+            if index == 0:
                 entry.config(state='readonly', background='#f0f0f0')
         # מחיקת הפריט הישן
         self.tree.delete(selected)
-    
+    def total_items_in_categories(self):
+        total = 0
+        for items in self.category_data.items():
+            total += len(items) 
+        return total
+
     def add_product(self):
         values = [e.get() for e in self.entries]
-        if any(not v.strip() for v in values):
-            messagebox.showwarning("שגיאה", "נא למלא את כל השדות")
+        if not values[1].strip():  # Assuming 'מספר' is at index 1
+            messagebox.showwarning("שגיאה", "נא למלא את שדה מספר")
             return
             
-        # הוספת ברקוד לערכים
         barcode_value = self.generate_barcode(values)
         values.append(barcode_value)
         
-        print("values", values)
-        # הוספה לטבלה ולקטגוריה הנוכחית
+        for data in self.category_data.items():
+            length = len(data)
+        values[0] = self.total_items_in_categories()
         self.tree.insert('', tk.END, values=values)
         self.category_data[self.current_category.get()].append(values[1:])
         
-        # ניקוי שדות
         for entry in self.entries[1:]:
             entry.delete(0, tk.END)
             
